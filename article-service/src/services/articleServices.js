@@ -2,6 +2,8 @@ const Article = require("../models/articlesSchema.js");
 const mongoose = require("mongoose");
 const axios = require("axios");
 const GATEWAY_API = process.env.GATEWAY_API;
+const fs = require("fs");
+const path = require("path");
 
 const fetchUser = async (userId, token) => {
   if (!GATEWAY_API) {
@@ -68,8 +70,10 @@ exports.getAllArticles = async (
     const articles = await Article.find(filter).sort({ createdAt: -1 }).lean(); //by using .lean method we will get plain javascript objects
     //query articles based on filters and sort them by newest first and this will return in plain javascript objects
 
-    const fetchedArticles = await Promise.all(//if each articles has user id then it will return an array of fullfilled fetchUser data
-      articles.map(async (article) => {//fetch full user data for each article
+    const fetchedArticles = await Promise.all(
+      //if each articles has user id then it will return an array of fullfilled fetchUser data
+      articles.map(async (article) => {
+        //fetch full user data for each article
         try {
           const userData = await fetchUser(article.user, token);
           return { ...article, user: userData };
@@ -80,7 +84,8 @@ exports.getAllArticles = async (
       })
     );
 
-    const filteredArticles = fetchedArticles.filter((article) => {//this part will filter articles by search terms like title,firstname and lastname and it is case insensitive
+    const filteredArticles = fetchedArticles.filter((article) => {
+      //this part will filter articles by search terms like title,firstname and lastname and it is case insensitive
       if (!search) return true;
       const titleSearch = article.title
         ?.toLowerCase()
@@ -95,13 +100,13 @@ exports.getAllArticles = async (
       return titleSearch || firstNameSearch || lastNameSearch;
     });
 
-    const total = filteredArticles.length;//this will give total number of articles after filtering
+    const total = filteredArticles.length; //this will give total number of articles after filtering
     const paginatedArticles = filteredArticles.slice(
-      (page - 1) * limit,//this is for skipping how number of articles we want to skip for going to another page
+      (page - 1) * limit, //this is for skipping how number of articles we want to skip for going to another page
       page * limit
     );
 
-    return { articles: paginatedArticles, total };//this will return array of pagenated articles with user details in response
+    return { articles: paginatedArticles, total }; //this will return array of pagenated articles with user details in response
   } catch (error) {
     console.error("Error in getAllArticles service:", error);
     throw new Error("Failed to get all articles");
@@ -110,10 +115,10 @@ exports.getAllArticles = async (
 
 exports.getArticleById = async (id, token) => {
   try {
-    if (!mongoose.Types.ObjectId.isValid(id)) return null;//this will validate id is a valid object or not if not return null
+    if (!mongoose.Types.ObjectId.isValid(id)) return null; //this will validate id is a valid object or not if not return null
 
-    const article = await Article.findOne({ _id: id, isDeleted: false }).lean();//this will find an article by id and whose isDeleted is false and return in plain javascript object
-    if (!article) return null;//no article then return null
+    const article = await Article.findOne({ _id: id, isDeleted: false }).lean(); //this will find an article by id and whose isDeleted is false and return in plain javascript object
+    if (!article) return null; //no article then return null
 
     try {
       article.user = await fetchUser(article.user, token);
@@ -122,37 +127,53 @@ exports.getArticleById = async (id, token) => {
       throw new Error("Failed to get article by id");
     }
 
-    return article;//return article with user details
+    return article; //return article with user details
   } catch (error) {
     console.error("Error in getArticleById service:", error);
     throw new Error("Failed to get article by id");
   }
 };
 
-exports.updateArticleById = async (id, updateData, token) => {
+exports.updateArticleById = async ({ id, body, files, user, token }) => {
   try {
-    if (!mongoose.Types.ObjectId.isValid(id)) return null;
+    const existingArticle = await this.getArticleById(id, token);
+    if (!existingArticle) return null;
 
-    const updated = await Article.findByIdAndUpdate(id, updateData, {
-      new: true,//returns the updated document
-      runValidators: true,//validates the update data
-    }).lean();
+    const newImage = files?.articleImage?.[0]
+      ? `/uploads/${files.articleImage[0].filename}`
+      : existingArticle.articleImage;
 
-    if (!updated) return null; // Article not found
-
-    if (updated.isDeleted === true) {//if article is marked deleted then returns isDeleted: true
-      return { isDeleted: true };
+    const updateData ={
+      title: body.title || existingArticle.title,
+      content: body.content || existingArticle.content,
+      type: body.type || existingArticle.type,
+      isDeleted:  body.isDeleted !== undefined ? body.isDeleted : existingArticle.isDeleted,
+      articleImage: newImage,
+    };
+    
+    if (
+      user.role === "admin" &&
+      body.type === "draft" &&
+      existingArticle.user?.id?.toString() !== user.id
+    ){
+      throw new Error("Admin can not draft an article of another user");
     }
 
-    try {
-      updated.user = await fetchUser(updated.user, token);
-    } catch (error) {
-      console.error("Failed to fetch user:", error.message);
-      throw new Error("Failed to update article by id");
+    const updatedArticle = await Article.findByIdAndUpdate(id,updateData,{ new: true, runValidators: true });
+    if(!updatedArticle) return null;
+
+    if (files?.articleImage?.[0] && existingArticle.articleImage) {
+      const oldImagePath = path.join(__dirname, "..", existingArticle.articleImage);
+      if (fs.existsSync(oldImagePath)) {
+        fs.unlink(oldImagePath, (err) => {
+          if (err) console.error("Error deleting old image:", err);
+        });
+      }
     }
-    return updated;// returns updated article with user details
+
+    return updatedArticle; // returns updated article with user details
   } catch (error) {
     console.error("Error in updateArticleById service:", error);
-    throw new Error("Failed to update article by id");
+    throw error;
   }
 };

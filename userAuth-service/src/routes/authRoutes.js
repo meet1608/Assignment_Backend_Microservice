@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 const {createUser,setPassword,loginUser,forgotPassword,resetpassword} = require('../controllers/authcontroller.js');
-const { createUserSchema, setPasswordSchema, loginSchema, forgotPasswordSchema, updateUserSchema,resetPasswordSchema,objectIdSchema  } = require('../validations/userValidation.js');
+const { createUserSchema, setPasswordSchema, loginSchema, forgotPasswordSchema,resetPasswordSchema  } = require('../validations/userValidation.js');
 const validate = require('../middleware/validate.js');
 const upload = require("../middleware/fileUpload.js");
 

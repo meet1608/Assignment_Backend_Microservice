@@ -66,6 +66,7 @@ exports.getArticleById = async (req, res) => {
     const id = req.params.id;
     const token = req.headers.authorization;
     if (!token) return res.status(401).json({ message: "Unauthorized" });
+    
     const article = await articleQueries.getArticleById(id, token);
     if (!article) {
       return res.status(404).json({ message: "Article not found" });
@@ -91,66 +92,21 @@ exports.updateArticleById = async (req, res) => {
 
     const { title, content, type, isDeleted } = req.body;//user can update this all details
 
-    const existingArticle = await articleQueries.getArticleById(id, token);
-    if (!existingArticle) {
-      return res.status(404).json({ message: "Article not found" });
-    }
-
-    // check new image
-    const newImage = req.files?.articleImage?.[0]
-      ? `/uploads/${req.files.articleImage[0].filename}`
-      : existingArticle.articleImage;
-
-    const articleData = {
-      title,
-      content,
-      type,
-      isDeleted: isDeleted ?? existingArticle.isDeleted,
-      articleImage: newImage,
-    };
-
-    if (
-      req.user.role === "admin" &&
-      type === "draft" &&
-      existingArticle.user?.id?.toString() !== req.user.id
-    ) {
-      return res
-        .status(403)
-        .json({ message: "Admin can not draft an article of user" });
-    }
-
-    const updatedArticle = await articleQueries.updateArticleById(
+    const result = await articleQueries.updateArticleById({
       id,
-      articleData,
-      token
-    );
-    if (!updatedArticle) {
-      return res.status(404).json({ message: "Article not found" });
-    }
+      body: { title, content, type, isDeleted },
+      files: req.files,
+      user: req.user,
+      token,
+    });
 
-    // delete old image only after successful DB update
-    if (req.files?.articleImage?.[0] && existingArticle.articleImage) {
-      const oldImagePath = path.join(
-        __dirname,
-        "..",
-        existingArticle.articleImage
-      );
-      if (fs.existsSync(oldImagePath)) {
-        fs.unlink(oldImagePath, (err) => {
-          if (err) console.error("Error deleting old image:", err);
-        });
-      }
-    }
+   if (!result) return res.status(404).json({ message: "Article not found" });
 
-    if (isDeleted) {
-      return res
-        .status(200)
-        .json({ message: "Article soft deleted successfully" });
-    }
-
+    if (result.isDeleted)
+      return res.status(200).json({ message: "Article soft deleted successfully" });
     res.status(200).json({
       message: "Article updated successfully",
-      article: updatedArticle,
+      article: result,
     });
   } catch (error) {
     console.error("Error updating article by ID:", error);

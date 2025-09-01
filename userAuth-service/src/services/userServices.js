@@ -13,6 +13,7 @@ const userprint = {
     updatedAt: 1,
     isEmailVerified: 1,
     isDeleted: 1,
+    _id: 0,//without writing this it will also printing _id so i need to write this
   },
 };
 

@@ -101,6 +101,9 @@ exports.loginUser = async (req, res) => {
       { expiresIn: "1h" }
     );
 
+    // const UserDetails = user.toObject();
+    // delete UserDetails.password;
+
     res.status(200).json({
       message: "Login successful",
       token,
